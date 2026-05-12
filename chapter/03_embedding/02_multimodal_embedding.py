@@ -8,8 +8,7 @@ from google.genai import types
 from sklearn.metrics.pairwise import cosine_similarity
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CHAPTER_DIR = Path(__file__).resolve().parent
-IMAGE_DIR = CHAPTER_DIR / "images"
+IMAGE_DIR = PROJECT_ROOT / "data" / "C3" / "images" / "02"
 
 
 def get_api_key() -> str:

@@ -34,6 +34,8 @@ unstructured-inference
 unstructured.pytesseract
 unstructured[pdf]
 opencv-python-headless
+numpy
+pillow
 einops
 ftfy
 llama-index-experimental
@@ -42,5 +44,8 @@ bilibili-api-python
 lark
 lazy_loader
 pyarrow
-
-requests>=2.28.1
+tqdm
+pydantic
+pymilvus
+pymilvus.model
+requests=2.27.1

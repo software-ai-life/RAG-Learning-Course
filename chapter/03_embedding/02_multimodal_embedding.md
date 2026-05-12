@@ -70,22 +70,7 @@
 
 可以想像成：
 
-```text
-共享向量空間
-
-「貓坐在沙發上」       貓的照片
-        *                *
-          \            /
-           \          /
-            *  貓相關語意區域
-
-
-「工廠生產線」          工廠照片
-        *                *
-          \            /
-           \          /
-            *  工廠相關語意區域
-```
+![共享多模態向量空間示意圖](./images/multimodal_embedding.png)
 
 在這個空間中，重點不是資料原本是文字還是圖片，而是它們表達的語意是否接近。
 
@@ -93,20 +78,18 @@
 
 ## 三、CLIP：圖文 Embedding 的代表模型
 
+![CLIP 圖文 Embedding 架構示意圖](./images/CLIP.png)
+
 在圖文多模態領域，OpenAI 的 **CLIP（Contrastive Language-Image Pre-training）** 是很重要的代表模型。
 
-CLIP 的核心想法很直覺：
+CLIP 的核心想法是把圖片與文字放進同一個向量空間：
 
 ```text
 圖片 encoder：把圖片轉成 image embedding
 文字 encoder：把文字轉成 text embedding
 ```
 
-這兩個 encoder 會把圖片與文字放進同一個向量空間。只要圖片和文字語意相符，它們的向量就應該接近。
-
-### 3.1 Dual-Encoder 架構
-
-CLIP 使用的是 **雙編碼器架構（Dual-Encoder Architecture）**。
+只要圖片和文字語意相符，它們的向量就應該接近；如果語意不相關，向量距離就會比較遠。
 
 | 元件 | 功能 |
 | --- | --- |
@@ -114,23 +97,7 @@ CLIP 使用的是 **雙編碼器架構（Dual-Encoder Architecture）**。
 | Text Encoder | 讀取文字，輸出文字向量 |
 | Similarity Function | 比較圖片向量與文字向量是否接近 |
 
-例如要判斷一張圖片是不是貓，可以準備幾段文字：
-
-```text
-a photo of a cat
-a photo of a dog
-a photo of a car
-```
-
-CLIP 會把圖片和這些文字都轉成向量，然後計算相似度。相似度最高的文字，就可以當作模型對圖片的判斷。
-
-這也是 CLIP 可以做 **zero-shot classification** 的原因：不一定要針對每個新分類重新訓練模型，只要用自然語言描述候選類別，就能完成判斷。
-
-### 3.2 對比學習
-
-CLIP 能對齊圖片和文字，關鍵在於 **對比學習（Contrastive Learning）**。
-
-訓練時，模型會看到一批圖片與文字描述。例如：
+CLIP 能做到圖文對齊，關鍵在於 **對比學習（Contrastive Learning）**。訓練時，模型會看到大量圖片與文字配對：
 
 ```text
 圖片 A <-> 文字 A
@@ -143,14 +110,7 @@ CLIP 能對齊圖片和文字，關鍵在於 **對比學習（Contrastive Learni
 1. 讓正確配對的圖片和文字向量更接近。
 2. 讓錯誤配對的圖片和文字向量更遠。
 
-也就是：
-
-```text
-拉近正確圖文對
-推遠錯誤圖文對
-```
-
-經過大量圖文資料訓練後，模型就能學會「圖片內容」和「文字描述」之間的語意關係。
+在 RAG 中，這個能力可以用來做文字搜尋圖片、圖片搜尋文字，或把圖片與文字資料放進同一個檢索流程。
 
 ## 四、多模態 Embedding 在 RAG 中怎麼用
 
@@ -210,6 +170,12 @@ CLIP 能對齊圖片和文字，關鍵在於 **對比學習（Contrastive Learni
 這種方式比單純圖片或單純文字更能保留完整上下文。
 
 ## 五、常見多模態 Embedding 模型
+
+![MMEB 多模態 Embedding Leaderboard](./images/MMEB_leaderboard.png)
+
+如果想比較多模態 embedding model，可以參考 Hugging Face 上的 [MMEB Leaderboard](https://huggingface.co/spaces/TIGER-Lab/MMEB-Leaderboard)。MMEB 主要用來評估模型在多模態任務上的表現，例如圖文檢索、跨模態理解與多模態 retrieval。
+
+Leaderboard 可以用來篩選候選模型，但實務上仍要用自己的資料測試。特別是中文資料、專業領域文件、圖表、截圖與 PDF 頁面，排行榜分數高不代表一定最適合你的 RAG 任務。
 
 ### 5.1 Visualized-BGE / bge-visualized-m3
 
@@ -530,6 +496,7 @@ LLM 回答區
 ## 參考資料
 
 - [Datawhale all-in-rag：多模態嵌入](https://github.com/datawhalechina/all-in-rag/blob/main/docs/chapter3/07_multimodal_embedding.md)
+- [Hugging Face MMEB Leaderboard](https://huggingface.co/spaces/TIGER-Lab/MMEB-Leaderboard)
 - [BAAI Visualized-BGE Model Card](https://huggingface.co/BAAI/bge-visualized)
 - [BAAI/bge-m3 Model Card](https://huggingface.co/BAAI/bge-m3)
 - [Gemini API Embeddings](https://ai.google.dev/gemini-api/docs/embeddings)
