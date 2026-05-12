@@ -1,5 +1,7 @@
 # 第二節 文字分塊
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./02_text_chuckling_en.md)
+
 文字分塊（Text Chunking）是 RAG 資料前處理中的核心步驟。資料載入只能把 PDF、Markdown、文字檔轉成可處理的文字；但這些文字通常不能整份直接送進 embedding model 或 LLM。
 
 RAG 需要先把長文件切成較小、語意相對完整的片段，這些片段稱為 **chunks**。後續 embedding、vector store、retrieval 都會以 chunk 為基本單位。

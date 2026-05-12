@@ -1,5 +1,7 @@
 # 第一節 資料載入
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./01_data_load_en.md)
+
 資料載入是 RAG pipeline 的第一步。這一步看起來只是「把檔案讀進來」，但實際上會直接影響後面的 chunk 切分、embedding、retrieval，以及最後 LLM 回答的品質。
 
 如果資料載入階段抽到的文字是錯的、順序是亂的、表格被破壞，或是 metadata 不完整，後面再好的 embedding model 和 LLM 也很難補救。RAG 很符合一句資料工程常見的原則：

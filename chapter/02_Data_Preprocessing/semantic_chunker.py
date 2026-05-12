@@ -4,6 +4,12 @@ from langchain_community.document_loaders import TextLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_experimental.text_splitter import SemanticChunker
 
+import os
+import ssl
+import requests
+os.environ['CURL_CA_BUNDLE'] = ''
+ssl._create_default_https_context = ssl._create_unverified_context
+requests.packages.urllib3.disable_warnings()
 
 # 1. 建立 embedding model
 embeddings = HuggingFaceEmbeddings(
