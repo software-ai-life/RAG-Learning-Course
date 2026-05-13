@@ -19,7 +19,8 @@ COLLECTION_NAME = "multimodal_car_demo"
 MILVUS_URI = "http://localhost:19530"
 EMBEDDING_MODEL = "gemini-embedding-2"
 OUTPUT_DIMENSIONALITY = 768
-QUERY_TEXT = "一台紅色跑車"
+QUERY_TEXT = "一台紅色車"
+QUERY_IMAGE_PATH = DATA_DIR / "query.jpg"
 RESULT_PATH = DATA_DIR / "search_result.png"
 
 
@@ -52,12 +53,12 @@ def validate_paths() -> None:
         raise FileNotFoundError(
             "找不到圖片資料夾：\n"
             f"{DATA_DIR}\n\n"
-            "請建立 data/C3/images/04_cars/，並放入 query.png、car_01.png 等圖片。"
+            "請建立 data/C3/images/04_cars/，並放入 query.jpg、car_01.jpg 等圖片。"
         )
 
-    if not (DATA_DIR / "query.png").exists():
+    if not QUERY_IMAGE_PATH.exists():
         raise FileNotFoundError(
-            f"找不到 query 圖片：{DATA_DIR / 'query.png'}"
+            f"找不到 query 圖片：{QUERY_IMAGE_PATH}"
         )
 
 
@@ -128,7 +129,7 @@ def get_image_list() -> list[str]:
     for pattern in image_patterns:
         image_list.extend(glob(pattern))
 
-    query_path = str(DATA_DIR / "query.png")
+    query_path = str(QUERY_IMAGE_PATH)
     result_path = str(RESULT_PATH)
     return sorted(
         path
@@ -206,9 +207,8 @@ def create_index(client: MilvusClient) -> None:
 
 
 def search_images(client: MilvusClient, encoder: Encoder) -> list[str]:
-    query_image_path = DATA_DIR / "query.png"
     query_vector = encoder.encode_query(
-        image_path=query_image_path,
+        image_path=QUERY_IMAGE_PATH,
         text=QUERY_TEXT,
     )
 
@@ -223,7 +223,7 @@ def search_images(client: MilvusClient, encoder: Encoder) -> list[str]:
     retrieved_images = []
 
     print("\n查詢圖片：")
-    print(query_image_path)
+    print(QUERY_IMAGE_PATH)
     print("查詢文字：")
     print(QUERY_TEXT)
     print("\n檢索結果：")
@@ -311,7 +311,7 @@ def main() -> None:
     image_list = get_image_list()
     if not image_list:
         raise RuntimeError(
-            f"在 {DATA_DIR} 找不到候選圖片。請放入 car_01.png、car_02.png 等圖片。"
+            f"在 {DATA_DIR} 找不到候選圖片。請放入 car_01.jpg、car_02.jpg 等圖片。"
         )
 
     print("初始化 Gemini embedding encoder 與 Milvus client")
@@ -325,7 +325,7 @@ def main() -> None:
 
     retrieved_images = search_images(client, encoder)
     if retrieved_images:
-        result_image = visualize_results(DATA_DIR / "query.png", retrieved_images)
+        result_image = visualize_results(QUERY_IMAGE_PATH, retrieved_images)
         cv2.imwrite(str(RESULT_PATH), result_image)
         print(f"\n搜尋結果圖已儲存到：{RESULT_PATH}")
 

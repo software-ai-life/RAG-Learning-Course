@@ -4,7 +4,10 @@
 
 FAISS 很適合教學、本地實驗與 prototype；但如果資料量變大、需要多人共用、需要服務化部署、需要 metadata filter、需要長期維運，就會需要更完整的向量資料庫。
 
-**Milvus** 就是常見的選擇之一。
+**Milvus** 就是常見的選擇之一。  
+
+官網: https://milvus.io/  
+GitHub: https://github.com/milvus-io/milvus
 
 Milvus 是一個開源向量資料庫，主要用來處理大規模向量相似度搜尋。它適合用在：
 
@@ -75,27 +78,6 @@ Milvus WebUI: http://127.0.0.1:9091/webui/
 ```
 
 實際指令建議以官方文件為準，因為 Milvus 版本與部署腳本會更新。
-
-### 2.2 安裝 Python SDK
-
-Python 連線 Milvus 通常使用 `pymilvus`：
-
-```bash
-pip install pymilvus
-```
-
-本節程式使用 Gemini API 產生多模態 embedding，因此也需要在專案根目錄 `.env` 設定：
-
-```text
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-如果使用本課程的虛擬環境，可以加入 `requirements.txt`：
-
-```text
-pymilvus
-google-genai
-```
 
 ## 三、Milvus 的核心概念
 
@@ -199,28 +181,24 @@ encode_kwargs={"normalize_embeddings": True}
 
 ## 七、多模態 Milvus 範例：圖片搜尋圖片
 
-Datawhale 的範例程式 `04_multi_milvus.py` 示範的是 **多模態圖片檢索**。它不是一般文字 RAG，而是把圖片轉成向量後存進 Milvus，再用「查詢圖片 + 查詢文字」找回最相似的圖片。
+本章的 `04_multi_milvus.py` 示範的是 **多模態圖片檢索**。它不是一般文字 RAG，而是把圖片轉成向量後存進 Milvus，再用「查詢圖片 + 查詢文字」找回最相似的圖片。
 
-Datawhale 原始程式使用特定主題圖片。本課程改成 **車子圖片檢索**，因為車子類型明確、圖片容易準備，也很適合用文字條件描述。
+這裡使用 **車子圖片檢索** 作為範例，因為車子類型明確、圖片容易準備，也很適合用文字條件描述。
 
-你可以準備這個資料夾：
+相關素材已放入這個資料夾：
 
 ```text
 data/C3/images/04_cars/
 ```
 
-請另外準備新圖片，不要使用前面已經放在 `data/C3/images/02/` 的 RAG 架構圖或 AI Agent 圖片。
-
 建議放入：
 
 ```text
-query.png
-car_01.png
-car_02.png
-car_03.png
-car_04.png
-car_05.png
-car_06.png
+query.jpg
+car_01.jpg
+car_02.jpg
+car_03.jpg
+car_04.jpg
 ```
 
 圖片內容可以包含：
@@ -230,19 +208,17 @@ car_06.png
 3. 黃色計程車。
 4. 白色 SUV。
 5. 黑色卡車。
-6. 復古車。
-7. 電動車。
 
-`query.png` 建議放一張和查詢文字接近的圖片，例如紅色跑車。查詢文字可以設成：
+`query.jpg` 建議放一張和查詢文字接近的圖片，例如紅色車。查詢文字可以設成：
 
 ```text
-一台紅色跑車
+一台紅色車
 ```
 
 這樣範例的目標就會很清楚：
 
 ```text
-用 query.png + 「一台紅色跑車」
+用 query.jpg + 「一台紅色車」
 從車子圖片資料庫中找出最相似的圖片
 ```
 
@@ -253,7 +229,7 @@ car_06.png
 ```text
 1. 載入 Gemini embedding client
 2. 連線 Milvus
-3. 讀取 data/C3/images/04_cars/*.png
+3. 讀取 data/C3/images/04_cars/*.jpg
 4. 建立 Milvus collection
 5. 把每張圖片轉成 image embedding 後插入 Milvus
 6. 為 vector 欄位建立 HNSW index
@@ -493,12 +469,11 @@ Object Storage：保存 PDF、圖片、音訊、影片原始檔
 4. 建立一個 `multimodal_car_demo` collection。
 5. 設計 `id`、`vector`、`image_path` 欄位。
 6. 將每張車子圖片轉成 embedding 後插入 Milvus。
-7. 使用 `query.png` 和「一台紅色跑車」查詢 Top-5 相似圖片。
+7. 使用 `query.jpg` 和「一台紅色車」查詢 Top-5 相似圖片。
 8. 將搜尋結果輸出成 `search_result.png`，觀察排序是否合理。
 
 ## 參考資料
 
-- [Datawhale all-in-rag：Milvus 介紹及多模態檢索實踐](https://github.com/datawhalechina/all-in-rag/blob/main/docs/chapter3/09_milvus.md)
 - [Milvus Official Website](https://milvus.io/)
 - [Milvus Docker Installation](https://milvus.io/docs/install_standalone-docker.md)
 - [Milvus Quickstart](https://milvus.io/docs/quickstart.md)
