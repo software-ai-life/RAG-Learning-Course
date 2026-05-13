@@ -76,7 +76,7 @@ RAG-Learning/
 | --- | --- |
 | [資料載入](./chapter/02_Data_Preprocessing/01_data_load.md) | 常見文件載入工具、PDF、Markdown、Unstructured、MarkItDown、Chandra |
 | [文字切分](./chapter/02_Data_Preprocessing/02_text_chuckling.md) | Character、Recursive Character、Semantic Chunking |
-| [OCR 資料載入](./chapter/02_Data_Preprocessing/03_data_load_ocr.md) | OCR 工具與模型整理 |
+| [OCR](./chapter/OCR_comparison/01_ocr.md) | OCR 與 VLM OCR 工具整理 |
 
 ### Chapter 03：Embedding 與向量資料庫
 

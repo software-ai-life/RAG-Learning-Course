@@ -66,8 +66,7 @@ RAG 的索引不只是向量本身，而是一整套資料結構。
 所以實務上常見的做法是：
 
 ```text
-用小單位做檢索
-用較大的上下文做生成
+用小單位做檢索，用較大的上下文做生成
 ```
 
 這就是上下文擴展的核心想法。
@@ -120,6 +119,8 @@ S5：LLM 會根據找回的內容生成答案。
 但送進 LLM 前，系統會把 `text` 換成 `metadata["window"]`，因此回答時可以看到更多上下文。
 
 ### 3.2 LlamaIndex 範例
+
+完整範例程式可以參考：[05_sentence_window_retrieval.py](./05_sentence_window_retrieval.py)
 
 LlamaIndex 可以用 `SentenceWindowNodeParser` 建立句子窗口節點：
 

@@ -75,7 +75,7 @@ RAG-Learning/
 | --- | --- |
 | [Data Loading](./chapter/02_Data_Preprocessing/01_data_load.md) | Common document loading tools, PDF, Markdown, Unstructured, MarkItDown, and Chandra |
 | [Text Chunking](./chapter/02_Data_Preprocessing/02_text_chuckling.md) | Character, recursive character, and semantic chunking |
-| [OCR Data Loading](./chapter/02_Data_Preprocessing/03_data_load_ocr.md) | OCR tools and model overview |
+| [OCR](./chapter/OCR_comparison/01_ocr.md) | OCR and VLM OCR tools overview |
 
 ### Chapter 03: Embeddings and Vector Databases
 
