@@ -2,6 +2,20 @@
 
 這個資料夾用來比較不同 OCR / VLM OCR 工具在同一份 PDF 上的解析效果。
 
+重點是：**每個 OCR 工具分開跑，跑完後再統一評比輸出結果**。
+
+因為 PaddleOCR、Chandra、dots.ocr、DeepSeek-OCR 都是不同開源 repo，安裝方式、GPU 需求、執行指令和輸出格式都不同，所以本資料夾不負責統一執行所有 OCR。
+
+## 流程
+
+```text
+1. 分別到各 OCR repo 跑模型
+2. 把每個工具的輸出放到固定資料夾
+3. 使用 evaluate_ocr_outputs.py 統一讀取結果
+4. 產生 summary.csv 與 manual_score.csv
+5. 依照人工評分欄位比較哪個輸出最適合 RAG
+```
+
 預設資料來源：
 
 ```text
@@ -11,17 +25,27 @@ data/C2/pdf/SAM3.pdf
 預設輸出位置：
 
 ```text
-data/OCR/
+chapter/OCR_comparison/outputs/
 ```
 
-比較工具：
+建議放成這個結構：
 
 ```text
-PaddleOCR
-dots.ocr
-Chandra
-DeepSeek-OCR
+chapter/OCR_comparison/outputs/
+├── chandra/
+│   └── SAM3/
+│       ├── SAM3.md
+│       ├── SAM3.html
+│       └── SAM3_metadata.json
+├── paddleocr/
+│   └── SAM3/
+├── dots_ocr/
+│   └── SAM3/
+└── deepseek_ocr/
+    └── SAM3/
 ```
+
+`outputs/` 是本機實驗結果資料夾，已加入 `.gitignore`。
 
 ## 為什麼不只看字數
 
@@ -49,184 +73,105 @@ metadata 是否足夠追蹤來源
 本 repo 不直接下載或重跑這兩個 benchmark。  
 這裡是借用它們的評估方向，設計適合 `SAM3.pdf` 的人工評分表與輸出檢查項目。
 
-## 基本執行
+## 如何放入已跑好的結果
 
-在 Linux GPU server 上執行：
-
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py \
-  --pdf data/C2/pdf/SAM3.pdf \
-  --pages 1-5 \
-  --tools paddleocr chandra dots_ocr deepseek_ocr \
-  --output-dir data/OCR
-```
-
-輸出結構：
+例如你已經跑完 Chandra，輸出在：
 
 ```text
-data/OCR/
-└── SAM3/
-    ├── pages/
-    │   ├── page_001.png
-    │   ├── page_002.png
-    │   └── ...
-    ├── paddleocr/
-    │   ├── output.md
-    │   ├── output.json
-    │   └── raw/
-    ├── chandra/
-    ├── dots_ocr/
-    ├── deepseek_ocr/
-    ├── summary.csv
-    └── manual_score.csv
+chapter/OCR_comparison/outputs/chandra/SAM3/
 ```
 
-## 先跑小範圍
+裡面可以包含：
 
-建議先跑 1 到 2 頁，確認工具環境都可用：
-
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py --pages 1-2
+```text
+SAM3.md
+SAM3.html
+SAM3_metadata.json
+*.png / *.jpg / *.webp
 ```
 
-確認沒問題後再跑：
+其他工具也照同樣結構放：
 
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py --pages 1-5
-python chapter/OCR_comparison/ocr_benchmark.py --pages 1,2,3,4,5,8
+```text
+chapter/OCR_comparison/outputs/paddleocr/SAM3/
+chapter/OCR_comparison/outputs/dots_ocr/SAM3/
+chapter/OCR_comparison/outputs/deepseek_ocr/SAM3/
 ```
 
-最後才跑完整 PDF：
+檔名不一定要完全相同，評比程式會自動尋找：
 
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py --pages all
+```text
+*.md
+*.html
+*metadata*.json
+output.json
 ```
 
-## PDF 轉圖片依賴
-
-主程式會先將 PDF 頁面轉成 PNG，讓四個 OCR 工具吃到相同輸入。
-
-需要安裝：
-
-```bash
-pip install pymupdf
-```
-
-如果使用專案環境：
-
-```bash
-uv pip install -r requirements.txt
-```
-
-## PaddleOCR
-
-`paddleocr` adapter 會直接呼叫 Python package。
-
-Linux server 上可依照 PaddleOCR 官方文件安裝：
-
-```bash
-pip install paddlepaddle paddleocr
-```
-
-如果使用 GPU，請依照你的 CUDA 版本安裝對應的 PaddlePaddle。
-
-執行單一工具：
-
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py --tools paddleocr --pages 1-2
-```
-
-## Chandra
-
-Chandra 的執行方式可能依安裝方式不同，因此這裡使用環境變數指定 command template。
-
-你需要設定：
-
-```bash
-export CHANDRA_OCR_COMMAND='chandra {input} {output_dir}'
-```
-
-其中：
-
-| Placeholder | 說明 |
-| --- | --- |
-| `{input}` | 單頁 PNG 路徑 |
-| `{output_dir}` | 該頁 raw output 目錄 |
-| `{output}` | 同 `{output_dir}` |
+## 統一評比
 
 執行：
 
 ```bash
-python chapter/OCR_comparison/ocr_benchmark.py --tools chandra --pages 1-2
+python chapter/OCR_comparison/evaluate_ocr_outputs.py
 ```
 
-如果你的 Chandra CLI 參數不同，只要修改 `CHANDRA_OCR_COMMAND`，不需要改 benchmark 主程式。
+預設會掃描：
 
-## dots.ocr
-
-dots.ocr 通常需要照官方 repo 啟動模型或 vLLM server。  
-這裡同樣使用 command template。
-
-範例：
-
-```bash
-export DOTS_OCR_COMMAND='python /path/to/dots.ocr/demo/demo.py --input {input} --output {output_dir}'
+```text
+chapter/OCR_comparison/outputs/*/SAM3/
 ```
 
-執行：
+也可以指定工具：
 
 ```bash
-python chapter/OCR_comparison/ocr_benchmark.py --tools dots_ocr --pages 1-2
+python chapter/OCR_comparison/evaluate_ocr_outputs.py \
+  --tools chandra paddleocr dots_ocr deepseek_ocr
 ```
 
-## DeepSeek-OCR
-
-DeepSeek-OCR 也建議依官方 repo 在 Linux GPU server 上安裝，再用 command template 串接。
-
-範例：
+或指定其他 dataset 名稱：
 
 ```bash
-export DEEPSEEK_OCR_COMMAND='python /path/to/DeepSeek-OCR/inference.py --image {input} --output {output_dir}'
+python chapter/OCR_comparison/evaluate_ocr_outputs.py --dataset SAM3
 ```
 
-執行：
+產生：
 
-```bash
-python chapter/OCR_comparison/ocr_benchmark.py --tools deepseek_ocr --pages 1-2
+```text
+chapter/OCR_comparison/outputs/SAM3_summary.csv
+chapter/OCR_comparison/outputs/SAM3_manual_score.csv
 ```
 
 ## summary.csv
 
-每次 benchmark 會產生：
-
-```text
-data/OCR/SAM3/summary.csv
-```
-
-欄位：
+`summary.csv` 是自動統計結果，欄位包含：
 
 ```text
 tool
-pdf
-pages
-success
-runtime_seconds
-output_md_path
-output_json_path
+dataset
+output_dir
+markdown_path
+html_path
+metadata_path
 total_characters
 markdown_headings
 markdown_tables
-image_caption_count
-empty_pages
-error
+html_tables
+image_references
+image_files
+figure_caption_count
+formula_marker_count
+metadata_pages
+metadata_chunks
+metadata_images
+notes
 ```
 
 這份表適合快速看：
 
-1. 哪個工具有成功跑完。
-2. 哪個工具速度比較快。
-3. 哪個工具輸出比較多 Markdown 結構。
-4. 哪些工具有錯誤或空白頁。
+1. 哪個工具有輸出 Markdown / HTML / metadata。
+2. 哪個工具輸出比較多結構資訊。
+3. 哪個工具有圖片引用或圖片檔。
+4. metadata 是否包含頁數、chunk 數、圖片數。
 
 ## manual_score.csv
 
@@ -247,7 +192,7 @@ rag_readiness_1_to_5
 notes
 ```
 
-建議評分時看這幾頁：
+建議評分時看這幾頁或區段：
 
 | 頁數 | 觀察重點 |
 | --- | --- |
@@ -257,7 +202,18 @@ notes
 
 這些欄位設計參考 `olmOCR-bench` 的文件 OCR split，例如數學公式、頁首頁尾、小字、多欄與表格；也參考 `OCRBench v2` 對文字辨識與文件理解的整體評估方向。
 
-## Git 注意事項
+## 評比重點
 
-`data/OCR/` 是 benchmark 輸出資料夾，已加入 `.gitignore`。  
-除非要把實驗結果整理成教材，否則不建議提交 OCR 輸出結果。
+對 RAG 來說，最終要看：
+
+```text
+Markdown 是否乾淨
+表格是否可讀
+圖片 caption 是否保留
+閱讀順序是否合理
+metadata 是否足夠追蹤來源
+是否容易切 chunk
+是否需要大量人工清理
+```
+
+所以 `evaluate_ocr_outputs.py` 只做自動統計，真正的品質判斷仍需要搭配 `manual_score.csv` 人工檢查。

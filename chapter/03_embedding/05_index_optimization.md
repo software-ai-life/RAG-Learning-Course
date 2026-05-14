@@ -27,7 +27,7 @@ RAG 的索引不只是向量本身，而是一整套資料結構。
 | embedding vector | 由 embedding model 產生的向量 |
 | metadata | 來源、頁碼、章節、類型、日期、權限等資訊 |
 | parent / child 關係 | 小 chunk 與大段落、章節、原始文件之間的關係 |
-| index strategy | 使用純向量搜尋、metadata filter、hybrid search、分層檢索等策略 |
+| index strategy | 使用純向量搜尋、metadata filter、分層檢索等策略 |
 
 因此索引優化不是單純調整 `chunk_size`，而是要回答這幾個問題：
 
@@ -276,145 +276,315 @@ query = "AI 相關內容"
 第二層：再進入該資料源內部做精準檢索
 ```
 
-### 5.1 路由索引
+### 5.1 分層索引 Hierarchical Index
 
-假設有多個資料集：
+完整範例程式可以參考：[05_hierarchical_index.py](./05_hierarchical_index.py)
+
+這個範例使用四個資料源：
 
 ```text
-2023 財報
-2024 財報
-產品 FAQ
-內部維運 SOP
-RAG 課程教材
+financials：data/C3/excel/Financials.csv
+product_faq：data/C3/hierarchical/product_faq.md
+regional_strategy：data/C3/hierarchical/regional_strategy.md
+risk_memo：data/C3/hierarchical/risk_memo.md
 ```
 
-可以先為每個資料集建立一個摘要節點：
+查詢問題是：
 
 ```python
-route_docs = [
-    {
-        "text": "這份文件包含 2024 年公司財報與 AI 業務相關內容。",
-        "metadata": {"target": "financial_report_2024"},
-    },
-    {
-        "text": "這份文件包含 RAG 課程教材，介紹 chunking、embedding、vector database。",
-        "metadata": {"target": "rag_course"},
-    },
-]
+QUERY = "What risks are associated with Mexico's discount strategy? Please answer based on the financial data and the risk memo."
 ```
 
-使用者查詢時，系統先在摘要節點中找到最可能的資料源，再到對應資料源裡搜尋。
+這個問題同時需要兩類資料：
+
+| 需要的資料 | 對應資料源 |
+| --- | --- |
+| Mexico 的 sales、discounts、profit 等數值摘要 | `financials` |
+| 折扣策略可能造成什麼風險 | `risk_memo` |
+
+如果把所有資料直接丟進同一個 index，系統可能會找回產品 FAQ 或區域策略中語意相近但不夠關鍵的內容。
+分層索引會先判斷「應該查哪些資料源」，再進入那些資料源裡做細部檢索。
+
+#### 第一層：建立資料源摘要索引
+
+程式中的 `build_router_index()` 會為每個資料源建立一個摘要 `Document`：
+
+```python
+Document(
+    text=(
+        "Financials dataset. Use this source for quantitative questions "
+        "about sales, units sold, discounts, COGS, profit, country, product, segment, month, and year."
+    ),
+    metadata={"source_id": "financials", "source_type": "csv"},
+)
+```
+
+第一層不是拿來回答問題，而是拿來選資料源。
+查詢時會先執行：
+
+```python
+router_retriever = router_index.as_retriever(similarity_top_k=TOP_SOURCE_K)
+selected_sources = router_retriever.retrieve(query)
+```
+
+`TOP_SOURCE_K = 2` 代表第一層最多選出 2 個最相關資料源。
+以範例問題來說，理想上會選到：
+
+```text
+financials
+risk_memo
+```
+
+#### 第二層：進入被選中的資料源檢索
+
+程式中的 `build_source_indexes()` 會為每個資料源建立自己的 `VectorStoreIndex`：
+
+```python
+source_documents = {
+    "financials": build_financial_documents(),
+    "product_faq": build_markdown_documents(...),
+    "regional_strategy": build_markdown_documents(...),
+    "risk_memo": build_markdown_documents(...),
+}
+
+source_indexes = {
+    source_id: VectorStoreIndex.from_documents(documents)
+    for source_id, documents in source_documents.items()
+}
+```
+
+第二層會根據第一層選出的 `source_id`，進入對應的子索引：
+
+```python
+for source_node in selected_sources:
+    source_id = source_node.node.metadata["source_id"]
+    retriever = source_indexes[source_id].as_retriever(
+        similarity_top_k=TOP_DOC_K
+    )
+    results = retriever.retrieve(query)
+```
+
+`TOP_DOC_K = 3` 代表每個被選中的資料源中，取回 3 筆最相關內容。
+
+#### CSV 資料如何進入分層索引
+
+`Financials.csv` 不是直接把每一列都變成一個 chunk。
+範例程式會先依照不同維度建立摘要文件：
+
+```text
+country summary
+product summary
+segment summary
+```
+
+例如 `Mexico` 會被整理成一份 country summary，內容包含：
+
+```text
+Total units sold
+Total sales
+Total discounts
+Total profit
+Products
+Segments
+Years
+```
+
+這樣做的原因是：財務問題通常不只是問某一列，而是需要某個國家、產品或 segment 的彙總資訊。
+先把 CSV 轉成可檢索摘要，可以讓 retrieval 更接近分析問題的粒度。
+
+分層索引的完整流程可以整理成：
 
 ```text
 使用者問題
--> 搜尋摘要索引
--> 找到目標資料源
--> 對該資料源做 metadata filter 或子索引查詢
--> 回傳結果給 LLM
+-> 第一層 router index 選資料源
+-> 例如選到 financials + risk_memo
+-> 第二層進入 financials 子索引查 Mexico 財務摘要
+-> 第二層進入 risk_memo 子索引查 discount risk
+-> 回傳結果給後續 LLM 或人工分析
 ```
 
-這種方式很適合大型知識庫。
+這種方式很適合大型知識庫，因為它會先縮小搜尋範圍，再做細部檢索。
 
-### 5.2 遞迴檢索
+### 5.2 遞迴檢索 Recursive Retrieval
 
-遞迴檢索可以把一個節點當成「指向另一個查詢引擎的入口」。
+遞迴檢索可以把第一層檢索到的節點，當成「指向另一個 retriever 的入口」。
 
-概念上像這樣：
+完整範例程式可以參考：[05_recursive_retrieval.py](./05_recursive_retrieval.py)
+
+這個範例使用：
 
 ```text
-問題：1994 年評分最高的電影是哪一部？
-
-第一層索引：
-找到「1994 年電影資料表」這個節點
-
-第二層查詢：
-進入 1994 年的表格查詢引擎
-
-最後回答：
-回傳該表格中的查詢結果
+data/C3/excel/music.xlsx
 ```
 
-這種做法適合：
-
-1. 多份文件或多個資料表。
-2. 每個資料源需要不同查詢方式。
-3. 不希望每次都對全資料庫搜尋。
-4. 需要把「找資料源」和「在資料源內查答案」拆開處理。
-
-### 5.3 關於表格查詢的安全提醒
-
-有些工具可以把自然語言轉成 Pandas 程式碼，再用程式查表格。這種方式很方便，但要注意安全風險。
-
-如果工具底層會執行模型產生的 Python code，例如透過 `eval()` 執行，就不適合直接用在正式環境。
-
-比較安全的做法是：
+這份 Excel 有多個年份 sheet：
 
 ```text
-先用摘要索引判斷要查哪張表
-再用 metadata filter 限制搜尋範圍
-盡量避免讓 LLM 直接產生並執行任意 Python code
-必要時使用 sandbox、權限隔離、查詢白名單
+1950
+2000
+2010
 ```
 
-## 六、Hybrid Search
-
-向量搜尋擅長語意相似，但不一定擅長精確關鍵字。
-
-例如：
+每個 sheet 都是一個獨立資料源，欄位包含：
 
 ```text
-錯誤碼：ERR-4291
-產品型號：BGE-M3
-合約條款：第 7.2 條
-API 名稱：MetadataReplacementPostProcessor
+artist_name
+track_name
+release_date
+genre
+lyrics
+topic
 ```
 
-這類查詢常常需要關鍵字搜尋。  
-因此實務上常會把兩種方法結合：
+程式用 `pd.ExcelFile()` 讀取整份 Excel，再把每個 sheet 轉成 list of dict
 
-| 方法 | 擅長 |
+這樣 `1950`、`2000`、`2010` 會各自成為一個資料源，後面才能為每個年份建立自己的 retriever。
+
+查詢問題是：
+
+```python
+QUERY = "Find 2010 pop songs related to violence and summarize what the lyrics are about."
+```
+
+這個問題其實包含兩層需求：
+
+| 層級 | 任務 |
 | --- | --- |
-| Vector Search | 語意相似、同義詞、自然語言問題 |
-| Keyword Search / BM25 | 精確詞、型號、錯誤碼、專有名詞 |
-| Hybrid Search | 同時考慮語意與關鍵字 |
+| 第一層 | 判斷應該進入哪個年份 sheet，例如 `2010` |
+| 第二層 | 在該年份 sheet 裡找出 topic / lyrics 相關歌曲 |
 
-Hybrid Search 的概念是：
+#### 第一層：年份 sheet 索引
 
-```text
-同一個 query
--> 做 vector search
--> 做 keyword search
--> 合併與重新排序結果
--> 回傳最終 top-k
+程式中的 `build_year_router_index()` 會先為每個年份 sheet 建立摘要節點。這裡使用的是 `IndexNode`，不是一般 `Document`：
+
+```python
+IndexNode(
+    text=(
+        f"Music dataset for year {year}. "
+        f"This sheet contains {len(rows)} songs. "
+        f"Top topics include {top_topics}. "
+        f"Genres include {top_genres}. "
+        "Use this source for year-specific music, artist, track, genre, topic, and lyrics questions."
+    ),
+    index_id=f"music_{year}",
+    metadata={
+        "source_id": f"music_{year}",
+        "year": year,
+        "source_type": "xlsx_sheet",
+    },
+)
 ```
 
-在技術文件、API 文件、錯誤排查、法規條文中，Hybrid Search 通常比純向量搜尋更穩定。
+`IndexNode` 的重點是 `index_id`。
+當第一層選到 `index_id="music_2010"` 時，`RecursiveRetriever` 會知道下一步要進入 `retriever_dict["music_2010"]`。
 
-## 七、Rerank：重新排序檢索結果
+這一層不是查歌曲，而是先判斷問題應該進入哪個年份 sheet。
 
-向量資料庫回傳的 top-k，不一定就是最適合交給 LLM 的順序。
-
-常見流程會加入 reranker：
-
-```text
-query
--> vector database 先取回 top-20
--> reranker 重新評分
--> 選出 top-5
--> 交給 LLM
+```python
+root_retriever = year_router_index.as_retriever(similarity_top_k=TOP_YEAR_K)
 ```
 
-Reranker 和 embedding model 的差異是：
+`TOP_YEAR_K = 1` 代表第一層只選出最相關的一個年份 sheet。
+以範例問題來說，理想上會選到：
 
-| 模型 | 工作方式 |
+```text
+music_2010
+```
+
+#### 第二層：歌曲索引
+
+程式中的 `build_song_retrievers()` 會為每個年份 sheet 建立自己的歌曲索引，並轉成 retriever：
+
+```python
+song_index = VectorStoreIndex.from_documents(song_documents)
+song_retrievers[f"music_{year}"] = song_index.as_retriever(
+    similarity_top_k=TOP_SONG_K
+)
+```
+
+每一首歌會被轉成一個 `Document`：
+
+```python
+text = (
+    f"Year: {year}\n"
+    f"Artist: {row.get('artist_name', '')}\n"
+    f"Track: {row.get('track_name', '')}\n"
+    f"Genre: {row.get('genre', '')}\n"
+    f"Topic: {row.get('topic', '')}\n"
+    f"Lyrics keywords: {row.get('lyrics', '')}"
+)
+```
+
+`TOP_SONG_K = 5` 代表進入該年份後，取回 5 首最相關歌曲。
+
+#### 用 `RecursiveRetriever` 串起兩層
+
+```python
+recursive_retriever = RecursiveRetriever(
+    "root",
+    retriever_dict={
+        "root": root_retriever,
+        **song_retrievers,
+    },
+    verbose=True,
+)
+
+results = recursive_retriever.retrieve(query)
+```
+
+`retriever_dict` 裡面有兩種 key：
+
+| key | 作用 |
 | --- | --- |
-| Embedding model | 先把 query 和 chunk 各自轉成向量，再計算相似度 |
-| Reranker | 同時讀取 query 和 chunk，直接判斷這段內容是否能回答問題 |
+| `root` | 第一層年份 router retriever |
+| `music_1950`、`music_2000`、`music_2010` | 第二層年份歌曲 retriever |
 
-Reranker 通常比較慢，但判斷更細。  
-所以實務上常見做法是「先粗搜，再精排」。
+當 `root` retriever 找到 `IndexNode(index_id="music_2010")`，`RecursiveRetriever` 會自動用這個 `index_id` 找到對應的 `music_2010` retriever，接著在 2010 年的歌曲資料中繼續檢索。
 
-## 八、索引優化的實務選擇
+#### 為什麼這是遞迴檢索
+
+這個流程的重點是：第一層找到的不是最終答案，而是一個「通往下一層查詢的入口」。
+
+```text
+使用者問題
+-> root retriever 查年份摘要索引
+-> 找到 IndexNode(index_id="music_2010")
+-> RecursiveRetriever 依照 index_id 進入 music_2010 retriever
+-> 找到 topic / lyrics 最相關的歌曲
+-> 回傳歌曲 metadata 與內容
+```
+
+如果未來有更多 sheet，例如：
+
+```text
+1980
+1990
+2020
+```
+
+就不需要把所有歌曲全部放進同一個索引裡直接搜尋，而是先選年份，再進入該年份查詢。這就是遞迴檢索的價值。
+
+#### 執行方式
+
+執行方式：
+
+```powershell
+python chapter/03_embedding/05_recursive_retrieval.py
+```
+
+因為 `2010` sheet 有兩萬多筆資料，教學範例預設每個 sheet 只取前 300 筆建立索引：
+
+```python
+DEFAULT_ROW_LIMIT = 300
+```
+
+如果想調整筆數：
+
+```powershell
+python chapter/03_embedding/05_recursive_retrieval.py --row-limit 1000
+```
+
+## 六、索引優化的實務選擇
 
 不同情境適合不同策略。
 
@@ -423,7 +593,7 @@ Reranker 通常比較慢，但判斷更細。
 | 小型教學專案 | 一般 chunking + FAISS 即可 |
 | 長文件問答 | 句子窗口檢索或 parent-child chunk |
 | 多文件大型知識庫 | metadata filter + 分層索引 |
-| API / 技術文件 | hybrid search + reranker |
+| API / 技術文件 | 保留函式名稱、錯誤碼、版本號等 metadata，必要時先用 filter 縮小範圍 |
 | 表格資料 | 先路由資料源，再用安全方式查詢表格 |
 | 多模態資料 | 保存 modality、image_path、page、caption 等 metadata |
 | 權限敏感資料 | retrieval 前必須先做 permission filter |
@@ -434,10 +604,10 @@ Reranker 通常比較慢，但判斷更細。
 先讓資料結構正確
 再讓 metadata 完整
 再調 chunk 與 index
-最後加入 rerank / hybrid / hierarchical retrieval
+最後再依資料規模加入分層索引或遞迴檢索
 ```
 
-## 九、評估索引效果
+## 七、評估索引效果
 
 索引優化不能只靠感覺，需要用問題集測試。
 
@@ -459,12 +629,12 @@ LLM 回答是否引用了正確來源？
 | MRR | 正確答案出現得越前面越好 |
 | Answer quality | LLM 最後回答是否完整、正確、可追溯 |
 | Latency | 查詢速度是否可接受 |
-| Cost | embedding、rerank、LLM token 成本是否合理 |
+| Cost | embedding、LLM token 與查詢流程成本是否合理 |
 
 如果 retrieval 沒有找回正確資料，後面的 LLM 再強也很難回答正確。  
 因此在 RAG 系統中，索引與檢索品質通常比 prompt 技巧更關鍵。
 
-## 十、本節重點整理
+## 八、本節重點整理
 
 索引優化的核心不是把所有技巧都加上去，而是根據資料特性選擇合適的檢索結構。
 
@@ -474,8 +644,7 @@ LLM 回答是否引用了正確來源？
 句子窗口檢索可以先找小句子，再擴展上下文
 metadata filter 可以縮小搜尋範圍
 分層索引適合大型、多資料源知識庫
-hybrid search 適合技術文件、錯誤碼、專有名詞
-reranker 可以提升 top-k 結果排序品質
+遞迴檢索可以讓上層節點指向下層 retriever
 ```
 
 一個好的 RAG 索引設計，應該讓系統在回答問題前就先做到：

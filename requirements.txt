@@ -20,7 +20,6 @@ faiss-cpu
 scikit-learn
 
 pypdf
-pymupdf
 python-dotenv
 tiktoken
 
@@ -36,6 +35,7 @@ unstructured.pytesseract
 unstructured[pdf]
 opencv-python-headless
 numpy
+pandas
 pillow
 einops
 ftfy
