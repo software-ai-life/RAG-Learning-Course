@@ -19,7 +19,7 @@ COLLECTION_NAME = "multimodal_car_demo"
 MILVUS_URI = "http://localhost:19530"
 EMBEDDING_MODEL = "gemini-embedding-2"
 OUTPUT_DIMENSIONALITY = 768
-QUERY_TEXT = "一台紅色車"
+QUERY_TEXT = "一台白色車"
 QUERY_IMAGE_PATH = DATA_DIR / "query.jpg"
 RESULT_PATH = DATA_DIR / "search_result.png"
 
@@ -154,6 +154,7 @@ def create_collection(client: MilvusClient, dim: int) -> None:
         FieldSchema(name="image_path", dtype=DataType.VARCHAR, max_length=512),
     ]
     schema = CollectionSchema(fields, description="車子圖片多模態檢索")
+    print("Schema 已定義：", schema)
 
     client.create_collection(
         collection_name=COLLECTION_NAME,
