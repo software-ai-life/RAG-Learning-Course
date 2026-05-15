@@ -1,5 +1,7 @@
 # 第三節 向量資料庫
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./03_vector_db_en.md)
+
 前兩節介紹了 embedding 與多模態 embedding。Embedding model 會把文字、圖片或文件轉成向量，但光有向量還不夠。
 
 RAG 系統還需要一個地方保存這些向量，並且在使用者提問時，快速找出最相似的資料。

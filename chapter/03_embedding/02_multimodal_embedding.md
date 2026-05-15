@@ -1,5 +1,7 @@
 # 第二節 多模態 Embedding
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./02_multimodal_embedding_en.md)
+
 前一節介紹的 embedding 主要處理文字：把一段文字轉成向量，再用向量相似度找出語意接近的內容。
 
 但真實世界的資料不只有文字。企業文件、教材、產品手冊、醫療報告、學術論文、簡報和網頁裡，經常同時包含：

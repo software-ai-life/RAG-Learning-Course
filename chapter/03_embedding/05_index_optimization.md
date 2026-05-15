@@ -1,5 +1,7 @@
 # 第五節 索引優化
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./05_index_optimization_en.md)
+
 前面幾節已經介紹了 embedding、向量資料庫、FAISS 與 Milvus。到這裡為止，我們已經可以把文件切成 chunks、轉成向量，並用向量資料庫做相似度搜尋。
 
 但是，能搜尋不代表搜尋品質就一定好。

@@ -1,5 +1,7 @@
 # 第一節 什麼是 Embedding
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./01_what_is_embedding_en.md)
+
 在前面的章節中，我們已經完成了資料載入與文字分塊。接下來，RAG 系統要做的事情是：把每一個 chunk 轉成可以被電腦快速比較的格式。
 
 這個格式就是 **Embedding 向量**。

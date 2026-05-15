@@ -1,5 +1,7 @@
 # 第四節 Milvus
 
+[![English](https://img.shields.io/badge/Language-English-blue)](./04_Milvus_en.md)
+
 前一節介紹了向量資料庫的基本概念，也用 FAISS 示範如何在本地建立向量索引。
 
 FAISS 很適合教學、本地實驗與 prototype；但如果資料量變大、需要多人共用、需要服務化部署、需要 metadata filter、需要長期維運，就會需要更完整的向量資料庫。
