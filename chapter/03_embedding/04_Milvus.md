@@ -368,11 +368,11 @@ search_results = milvus_client.search(
 
 ```text
 檢索結果：
-Top 1: ID=466290967815129844, distance=0.8009, path=/mnt/d/project/RAG-Learning-Course/data/C3/images/04_cars/car_05.jpg
-Top 2: ID=466290967815129843, distance=0.6579, path=/mnt/d/project/RAG-Learning-Course/data/C3/images/04_cars/car_04.jpg
-Top 3: ID=466290967815129841, distance=0.6515, path=/mnt/d/project/RAG-Learning-Course/data/C3/images/04_cars/car_02.jpg
-Top 4: ID=466290967815129842, distance=0.6166, path=/mnt/d/project/RAG-Learning-Course/data/C3/images/04_cars/car_03.jpg
-Top 5: ID=466290967815129840, distance=0.6075, path=/mnt/d/project/RAG-Learning-Course/data/C3/images/04_cars/car_01.jpg
+Top 1: ID=466290967815129844, distance=0.8009, path=data/C3/images/04_cars/car_05.jpg
+Top 2: ID=466290967815129843, distance=0.6579, path=data/C3/images/04_cars/car_04.jpg
+Top 3: ID=466290967815129841, distance=0.6515, path=data/C3/images/04_cars/car_02.jpg
+Top 4: ID=466290967815129842, distance=0.6166, path=data/C3/images/04_cars/car_03.jpg
+Top 5: ID=466290967815129840, distance=0.6075, path=data/C3/images/04_cars/car_01.jpg
 ```
 
 這個結果表示 Milvus 依照 query vector 找回最相似的前 5 張圖片。`Top 1` 是目前最相似的結果，`distance` 是相似度分數；在這裡使用 `COSINE`，分數越高代表向量方向越接近，也就是圖片和查詢條件越相似。
