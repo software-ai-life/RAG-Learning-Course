@@ -2,7 +2,7 @@
 
 [![English](https://img.shields.io/badge/Language-English-blue)](./README_en.md)
 
-這是一份以實作為導向的 RAG（Retrieval-Augmented Generation，檢索增強生成）學習筆記與範例專案。
+這是一份 RAG（Retrieval-Augmented Generation，檢索增強生成）實作教材，目標是用循序漸進的章節與範例程式，帶讀者從基礎概念走到可實作的 RAG pipeline。
 
 課程會從 RAG 的基本概念開始，逐步介紹資料載入、文字切分、Embedding、向量資料庫、多模態 Embedding、Milvus，以及索引優化等主題。每個章節都會搭配 Markdown 教學與 Python 範例，方便一邊閱讀一邊實作。
 

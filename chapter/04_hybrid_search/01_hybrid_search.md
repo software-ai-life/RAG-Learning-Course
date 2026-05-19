@@ -209,7 +209,7 @@ sparse score 可能是 BM25 或 sparse inner product
 
 ## 四、常見融合方法
 
-### 4.1 RRF：Reciprocal Rank Fusion
+### 4.1 RRF：Reciprocal Rank Fusion 倒數排名融合法
 
 **RRF（Reciprocal Rank Fusion）** 是很常見也很穩定的融合方法。
 
@@ -278,127 +278,6 @@ FAQ 問答：可以提高 dense 權重
 | 限制 | RRF、權重、top-k 等參數需要實驗調整 |
 | 限制 | 融合後的排序解釋性比單純 BM25 更複雜 |
 
-Hybrid Search 很適合用在：
-
-```text
-企業知識庫
-技術文件搜尋
-客服 FAQ
-法規 / 條文查詢
-產品型錄搜尋
-醫療、金融、製造等專有名詞很多的資料
-```
-
-## 六、Milvus 中的 Hybrid Search 概念
-
-Milvus 支援在同一個 collection 中放入不同向量欄位，例如：
-
-| 欄位 | 類型 | 用途 |
-| --- | --- | --- |
-| `dense_vector` | `FLOAT_VECTOR` | 儲存 dense embedding |
-| `sparse_vector` | `SPARSE_FLOAT_VECTOR` | 儲存 sparse embedding |
-| `title` / `content` | `VARCHAR` | 原始文字或摘要 |
-| `source` / `category` | scalar fields | metadata filter |
-
-概念上，一筆資料會長這樣：
-
-```text
-id: chunk_001
-content: "Milvus 支援 dense vector、sparse vector 與 hybrid search..."
-source: "04_Milvus.md"
-dense_vector: [0.01, -0.03, ...]
-sparse_vector: {102: 0.8, 981: 1.4, ...}
-```
-
-查詢時，也會同時產生兩種 query vector：
-
-```text
-query dense vector
-query sparse vector
-```
-
-然後建立兩個 search request：
-
-```python
-dense_req = AnnSearchRequest(
-    data=[dense_vec],
-    anns_field="dense_vector",
-    param=search_params,
-    limit=top_k,
-)
-
-sparse_req = AnnSearchRequest(
-    data=[sparse_vec],
-    anns_field="sparse_vector",
-    param=search_params,
-    limit=top_k,
-)
-```
-
-最後用 `hybrid_search()` 搭配 ranker 合併結果：
-
-```python
-rerank = RRFRanker(k=60)
-
-results = collection.hybrid_search(
-    [sparse_req, dense_req],
-    rerank=rerank,
-    limit=top_k,
-    output_fields=["title", "content", "source"],
-)
-```
-
-這裡幾個重要參數要理解：
-
-| 參數 | 說明 |
-| --- | --- |
-| `anns_field` | 指定要查哪個向量欄位，例如 `dense_vector` 或 `sparse_vector` |
-| `limit` | 每一路檢索取回多少候選結果 |
-| `output_fields` | 查詢結果要回傳哪些 metadata 或文字欄位 |
-| `RRFRanker(k=60)` | 使用 RRF 融合排名，`k` 越大排序越平滑 |
-| `hybrid_search()` | 同時接收多個 `AnnSearchRequest`，再用 ranker 合併 |
-
-## 七、BGE-M3 與 Hybrid Search
-
-Hybrid Search 通常需要兩種模型或兩套方法：
-
-```text
-BM25 / sparse encoder
-dense embedding model
-```
-
-但 `BAAI/bge-m3` 的特別之處是，它可以支援多種檢索表示，常見包含：
-
-| 表示 | 用途 |
-| --- | --- |
-| dense embedding | 語意檢索 |
-| sparse embedding | 關鍵字 / 詞彙匹配 |
-| multi-vector | 更細粒度的 token-level matching |
-
-因此在 Milvus 的 hybrid search 範例中，常會用 BGE-M3 同時產生 sparse 與 dense vector。
-
-概念上會像這樣：
-
-```python
-embeddings = embedding_function(docs)
-
-sparse_vectors = embeddings["sparse"]
-dense_vectors = embeddings["dense"]
-```
-
-查詢時也是同樣流程：
-
-```python
-query_embeddings = embedding_function([query])
-
-sparse_vec = query_embeddings["sparse"]
-dense_vec = query_embeddings["dense"]
-```
-
-對 RAG 來說，這樣的好處是系統架構比較一致，不需要分別維護 BM25 tokenizer 和 dense embedding model。
-
-## 八、什麼時候該使用 Hybrid Search
-
 如果資料與查詢符合以下情境，就很適合使用 Hybrid Search：
 
 | 情境 | 原因 |
@@ -421,35 +300,405 @@ dense_vec = query_embeddings["dense"]
 
 這就是 Hybrid Search 的價值。
 
-## 九、實作時的設計建議
+## 六、程式範例：BM25 + Gemini Embedding + RRF
 
-在 RAG 系統中使用 Hybrid Search 時，可以從以下幾點開始調整：
+本節範例程式放在：
 
-| 設計點 | 建議 |
-| --- | --- |
-| Chunk 設計 | chunk 不要太大，否則 sparse 和 dense 都容易被雜訊影響 |
-| Metadata | 保留 `source`、`chapter`、`page`、`category` 等欄位 |
-| Top-K | sparse 和 dense 可以各取較大的候選數，再融合 |
-| Fusion | 初期可先用 RRF，因為不需要手動正規化分數 |
-| Filter | 先用 metadata filter 縮小範圍，再做 hybrid search |
-| Rerank | 如果結果仍不穩，可在 hybrid search 後加 reranker |
+[01_hybrid_search.py](./01_hybrid_search.py)
 
-一個比較完整的 RAG retrieval pipeline 可能會是：
+這支程式示範的是一個最小可執行的 Hybrid Search 流程：
 
 ```text
-使用者問題
--> metadata filter
--> sparse retrieval
--> dense retrieval
--> RRF fusion
--> reranker
--> context packing
--> LLM generation
+讀取 Markdown 文件
+-> 切成 chunks
+-> BM25Retriever 做 sparse retrieval
+-> Gemini embedding 做 dense retrieval
+-> EnsembleRetriever 用 RRF 合併排序
+-> 比較 sparse、dense、hybrid 三組結果
 ```
 
-Hybrid Search 通常不是最後一步，而是 retrieval pipeline 中提升召回率的重要一層。
+範例資料放在：
 
-## 十、小結
+```text
+data/C4/hybrid_search/
+```
+
+這些文件刻意包含兩種查詢情境：
+
+| 查詢情境 | 例子 | 目的 |
+| --- | --- | --- |
+| 語意問題 | `How does MCP help agent tool interoperability?` | 測試 dense retrieval 是否能找出真正回答問題的段落 |
+| 精準詞彙 | `ERR-4291`、`MetadataReplacementPostProcessor` | 測試 BM25 是否能穩定命中錯誤碼、API 名稱或類別名稱 |
+
+### 6.1 載入文件與切分 chunks
+
+每個 chunk 會加上固定的 `chunk_id`：
+
+```python
+document.metadata["chunk_id"] = f"chunk_{index:04d}"
+```
+
+`chunk_id` 很重要，因為後面 RRF 融合時需要知道 sparse retrieval 和 dense retrieval 找到的是不是同一個 chunk。
+
+### 6.2 BM25 sparse retrieval
+
+使用 LangChain Community 的 `BM25Retriever`：
+
+```python
+from langchain_community.retrievers import BM25Retriever
+
+retriever = BM25Retriever.from_documents(
+    chunks,
+    preprocess_func=tokenize,
+)
+retriever.k = top_k
+```
+
+`preprocess_func=tokenize` 會把文字轉成 BM25 使用的 tokens：
+
+```python
+def tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-zA-Z0-9_./:-]+", text.lower())
+```
+
+這個 tokenizer 特別保留 `_`、`.`、`/`、`:`、`-`，是因為技術文件常有：
+
+```text
+ERR-4291
+MetadataReplacementPostProcessor
+api/v1/tools
+model:gemini-embedding-2
+```
+
+如果 tokenizer 把這些符號全部切掉，BM25 對錯誤碼、API 路徑、類別名稱的精準匹配能力就會下降。
+
+### 6.3 Gemini dense retrieval
+
+Dense retrieval 使用 Gemini embedding：
+
+```python
+EMBEDDING_MODEL = "gemini-embedding-2"
+OUTPUT_DIMENSIONALITY = 768
+```
+
+Dense retrieval 會用 cosine similarity 排序：
+
+```python
+cosine_similarity(query_vector, vector)
+```
+
+因此它比較擅長處理語意問題，例如：
+
+```text
+How does MCP help agent tool interoperability?
+```
+
+即使文件沒有完全出現相同句子，dense retrieval 仍可能找出「MCP 提供標準化工具通訊方式」這類真正回答問題的段落。
+
+### 6.4 RRF hybrid fusion
+
+使用 LangChain 的 `EnsembleRetriever`，根據Reciprocal Rank Fusion算法對結果進行重新排序：
+
+```python
+from langchain_classic.retrievers.ensemble import EnsembleRetriever
+from langchain_core.runnables import RunnableLambda
+
+return EnsembleRetriever(
+    retrievers=[bm25_retriever, RunnableLambda(dense_retriever.invoke)],
+    weights=[0.5, 0.5],
+    c=rrf_k,
+    id_key="chunk_id",
+)
+```
+
+幾個重要參數如下：
+
+| 參數 | 說明 |
+| --- | --- |
+| `retrievers` | 放入多個 retriever，這裡是 BM25 和 Gemini dense retriever |
+| `weights` | 控制每一路檢索的權重，`[0.5, 0.5]` 代表兩邊同等重要 |
+| `c` | RRF 的平滑常數，預設使用 `60` |
+| `id_key` | 用 metadata 裡的 `chunk_id` 判斷不同 retriever 是否命中同一筆資料 |
+
+如果查詢偏向語意問題，可以提高 dense 權重：
+
+```python
+weights=[0.3, 0.7]
+```
+
+如果查詢偏向錯誤碼、API 名稱、產品型號，可以提高 BM25 權重：
+
+```python
+weights=[0.7, 0.3]
+```
+
+### 6.5 執行方式與結果解讀
+
+執行查詢：
+
+```bash
+python chapter/04_hybrid_search/01_hybrid_search.py "How does MCP help agent tool interoperability?"
+```
+
+程式會輸出三組結果：
+
+```text
+Sparse / BM25Retriever results
+Dense Gemini embedding results
+Hybrid EnsembleRetriever RRF results
+```
+
+解讀時可以這樣看：
+
+| 結果 | 觀察重點 |
+| --- | --- |
+| Sparse / BM25 | 是否命中錯誤碼、API 名稱、專有名詞 |
+| Dense Gemini embedding | 是否找出真正回答問題的語意段落 |
+| Hybrid RRF | 是否同時保留精準詞彙與語意相關內容 |
+
+例如查詢 `How does MCP help agent tool interoperability?` 時，dense retrieval 通常會更容易找出真正解釋 MCP 的段落；BM25 可能會找出包含關鍵字的 retrieval notes。這代表 hybrid search 的權重需要依照資料與查詢型態調整。
+
+## 七、Milvus + BGE-M3 Hybrid Search
+
+Milvus 版本範例程式放在：
+
+[01_hybrid_search_milvus.py](./01_hybrid_search_milvus.py)
+
+這支程式和前面的 LangChain 版本使用同一份資料：
+
+```text
+data/C4/hybrid_search/
+```
+
+這裡不再使用 `Gemini dense embedding + BM25 sparse retrieval`，而是改成 `BGE-M3 dense vector + BGE-M3 sparse vector`。也就是 dense 和 sparse 兩種檢索表示都由 `BAAI/bge-m3` 產生，再交給 Milvus 儲存與查詢。
+
+`BAAI/bge-m3` 可以這樣做，是因為它本身就是為 retrieval 任務設計的多功能 embedding model。一般 embedding model 通常只輸出一組 dense vector，用來做語意相似度搜尋；但 BGE-M3 在模型輸出中同時提供不同檢索表示：
+
+| 表示 | 作用 |
+| --- | --- |
+| Dense vector | 把整段文字壓成語意向量，適合找語意相近內容 |
+| Sparse vector | 保留詞彙層級的重要性，適合錯誤碼、專有名詞、API 名稱等精準匹配 |
+| Multi-vector | 以更細的 token-level 表示做比對，本範例暫時不使用 |
+
+所以這裡的 sparse vector 不是 BM25 算出來的，而是 BGE-M3 模型根據文字內容產生的 lexical weights。它和 BM25 一樣能補足 dense retrieval 對精準詞彙不穩的問題，但來源是神經模型，而不是傳統詞頻公式。
+
+### 7.1 使用 BGE-M3 產生 dense 與 sparse vectors
+
+程式使用 `pymilvus.model.hybrid` 提供的 `BGEM3EmbeddingFunction`：
+
+```python
+from pymilvus.model.hybrid import BGEM3EmbeddingFunction
+
+EMBEDDING_MODEL = "BAAI/bge-m3"
+
+embedding_function = BGEM3EmbeddingFunction(
+    model_name=EMBEDDING_MODEL,
+    device=device,
+    normalize_embeddings=True,
+    use_fp16=False,
+    return_dense=True,
+    return_sparse=True,
+    return_colbert_vecs=False,
+)
+```
+
+重要參數如下：
+
+| 參數 | 說明 |
+| --- | --- |
+| `model_name` | 指定使用 `BAAI/bge-m3` |
+| `device` | 指定執行裝置，例如 `cpu`、`cuda`、`cuda:0` |
+| `normalize_embeddings` | 對 dense vector 做正規化，方便用 cosine 類型相似度 |
+| `return_dense` | 是否回傳 dense embedding |
+| `return_sparse` | 是否回傳 sparse embedding |
+| `return_colbert_vecs` | 是否回傳 multi-vector，本範例先關閉 |
+
+產生文件向量時：
+
+```python
+embeddings = embedding_function.encode_documents(
+    [chunk.page_content for chunk in chunks]
+)
+
+dense_vectors = embeddings["dense"]
+sparse_vectors = embeddings["sparse"]
+```
+
+查詢時也是同一個 embedding function：
+
+```python
+query_embeddings = embedding_function.encode_queries([query])
+
+query_vector = query_embeddings["dense"][0]
+sparse_query_vector = sparse_row_to_dict(query_embeddings["sparse"][0])
+```
+
+這樣做的好處是 sparse 和 dense 來自同一個 retrieval model，不需要另外維護 BM25 tokenizer。
+
+### 7.2 建立 Milvus collection schema
+
+Milvus collection 同時放入文字欄位、metadata、dense vector 和 sparse vector：
+
+```python
+fields = [
+    FieldSchema(name="id", dtype=DataType.INT64, is_primary=True),
+    FieldSchema(name="chunk_id", dtype=DataType.VARCHAR, max_length=64),
+    FieldSchema(name="source", dtype=DataType.VARCHAR, max_length=512),
+    FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=256),
+    FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=4096),
+    FieldSchema(
+        name="dense_vector",
+        dtype=DataType.FLOAT_VECTOR,
+        dim=dense_dim,
+    ),
+    FieldSchema(
+        name="sparse_vector",
+        dtype=DataType.SPARSE_FLOAT_VECTOR,
+    ),
+]
+```
+
+這裡的關鍵是：
+
+| 欄位 | 用途 |
+| --- | --- |
+| `dense_vector` | 存 BGE-M3 的 dense embedding，用於語意搜尋 |
+| `sparse_vector` | 存 BGE-M3 的 sparse embedding，用於詞彙匹配 |
+| `chunk_id` | 對應原始 chunk，方便追蹤資料來源 |
+| `content` | 儲存原文內容，查詢後可以直接回傳給 LLM |
+
+### 7.3 建立 dense 與 sparse index
+
+Dense vector 使用 HNSW index：
+
+```python
+index_params.add_index(
+    field_name="dense_vector",
+    index_type="HNSW",
+    metric_type="COSINE",
+    params={
+        "M": 16,
+        "efConstruction": 256,
+    },
+)
+```
+
+Sparse vector 使用 Milvus 的 sparse inverted index：
+
+```python
+index_params.add_index(
+    field_name="sparse_vector",
+    index_type="SPARSE_INVERTED_INDEX",
+    metric_type="IP",
+    params={
+        "drop_ratio_build": 0.0,
+    },
+)
+```
+
+`drop_ratio_build` 會影響建立 sparse index 時是否丟棄低權重項目。本範例設為 `0.0`，代表教學時先完整保留 sparse vector 資訊。
+
+### 7.4 寫入 chunks
+
+寫入 Milvus 時，每一筆 chunk 會同時包含 dense vector 和 sparse vector：
+
+```python
+rows.append(
+    {
+        "id": index,
+        "chunk_id": chunk.metadata["chunk_id"],
+        "source": chunk.metadata["source"],
+        "title": chunk.metadata["title"],
+        "content": chunk.page_content,
+        "dense_vector": [float(value) for value in dense_vector],
+        "sparse_vector": sparse_row_to_dict(sparse_vector),
+    }
+)
+```
+
+`sparse_row_to_dict()` 的作用是把 BGE-M3 回傳的 sparse matrix 轉成 Milvus 可接受的 sparse vector 格式：
+
+```python
+{
+    102: 0.8,
+    981: 1.4,
+}
+```
+
+也就是只保留非零維度，符合 sparse vector 的資料型態。
+
+### 7.5 Milvus hybrid search
+
+查詢時會建立兩個 `AnnSearchRequest`。
+
+Dense request 查 `dense_vector`：
+
+```python
+dense_request = AnnSearchRequest(
+    data=[query_vector],
+    anns_field="dense_vector",
+    param={
+        "metric_type": "COSINE",
+        "params": {"ef": 128},
+    },
+    limit=top_k,
+)
+```
+
+Sparse request 查 `sparse_vector`：
+
+```python
+sparse_request = AnnSearchRequest(
+    data=[sparse_query_vector],
+    anns_field="sparse_vector",
+    param={
+        "metric_type": "IP",
+        "params": {"drop_ratio_search": 0.0},
+    },
+    limit=top_k,
+)
+```
+
+最後用 Milvus 的 `hybrid_search()` 和 `RRFRanker` 合併：
+
+```python
+results = client.hybrid_search(
+    collection_name=COLLECTION_NAME,
+    reqs=[sparse_request, dense_request],
+    ranker=RRFRanker(k=rrf_k),
+    limit=top_k,
+    output_fields=["chunk_id", "source", "title", "content"],
+)
+```
+
+這裡有幾個重點：
+
+| 參數 | 說明 |
+| --- | --- |
+| `reqs` | 放入 sparse 和 dense 兩路檢索請求 |
+| `RRFRanker(k=rrf_k)` | 使用 RRF 合併兩路檢索排名 |
+| `limit` | 最終回傳多少筆 hybrid results |
+| `output_fields` | 回傳 chunk metadata 和原文內容 |
+
+### 7.6 執行方式
+
+執行範例：
+
+```bash
+python chapter/04_hybrid_search/01_hybrid_search_milvus.py "ERR-4291"
+```
+
+輸出會分成三組：
+
+```text
+Sparse / Milvus BGE-M3 sparse vector results
+Dense / Milvus BGE-M3 dense vector results
+Hybrid / Milvus RRFRanker results
+```
+
+可以觀察 sparse、dense、hybrid 三種結果的差異。對錯誤碼、API 名稱這類查詢，sparse 往往會更穩；對概念型問題，dense 通常更容易找出真正回答問題的段落；hybrid 則用 RRF 把兩邊候選結果合併。
+
+## 八、小結
 
 本節介紹了 Hybrid Search 的核心概念：
 
@@ -462,19 +711,7 @@ Milvus 可以在同一個 collection 中同時儲存 sparse vector 與 dense vec
 ```
 
 在 RAG 系統中，Hybrid Search 特別適合處理專有名詞多、查詢多變、需要兼顧精準與語意的資料集。
-
-下一步可以實作一個簡單範例：
-
-```text
-建立 Milvus collection
-為每個 chunk 產生 sparse vector 與 dense vector
-分別查詢 sparse / dense 結果
-用 RRF 合併排序
-比較純 dense、純 sparse、hybrid search 的差異
-```
-
 ## 參考資料
 
-- [Datawhale all-in-rag：Hybrid Search](https://github.com/datawhalechina/all-in-rag/blob/main/docs/chapter4/11_hybrid_search.md)
 - [Milvus Hybrid Search 文件](https://milvus.io/docs/multi-vector-search.md)
 - [Milvus Sparse Vector 文件](https://milvus.io/docs/sparse_vector.md)

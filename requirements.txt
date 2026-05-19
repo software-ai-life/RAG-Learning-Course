@@ -50,3 +50,7 @@ pydantic
 pymilvus
 pymilvus.model
 requests==2.27.1
+rank-bm25
+FlagEmbedding>=1.3.3
+datasets
+peft
