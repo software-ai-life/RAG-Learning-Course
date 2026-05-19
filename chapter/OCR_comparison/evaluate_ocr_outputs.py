@@ -91,6 +91,19 @@ def resolve_path(path: Path) -> Path:
     return (PROJECT_ROOT / path).resolve()
 
 
+def display_path(path: Path | None) -> str:
+    if not path:
+        return ""
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def display_paths(paths: list[Path]) -> str:
+    return ";".join(display_path(path) for path in paths)
+
+
 def read_text(path: Path | None) -> str:
     if not path or not path.exists():
         return ""
@@ -112,6 +125,13 @@ def find_first(path: Path, patterns: list[str]) -> Path | None:
         if matches:
             return matches[0]
     return None
+
+
+def find_all(path: Path, patterns: list[str]) -> list[Path]:
+    matches: list[Path] = []
+    for pattern in patterns:
+        matches.extend(sorted(path.glob(pattern)))
+    return sorted(set(matches))
 
 
 def count_markdown_tables(markdown: str) -> int:
@@ -140,6 +160,12 @@ def get_metadata_number(metadata: dict[str, Any], keys: list[str]) -> str:
     return ""
 
 
+def count_jsonl_rows(path: Path | None) -> str:
+    if not path or not path.exists():
+        return ""
+    return str(sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()))
+
+
 def discover_tools(output_root: Path, requested_tools: list[str] | None) -> list[str]:
     if requested_tools:
         return requested_tools
@@ -149,20 +175,24 @@ def discover_tools(output_root: Path, requested_tools: list[str] | None) -> list
 
 
 def evaluate_tool(output_root: Path, dataset: str, tool: str) -> dict[str, str | int]:
-    output_dir = output_root / tool / dataset
-    markdown_path = find_first(output_dir, ["*.md", "**/*.md"])
-    html_path = find_first(output_dir, ["*.html", "**/*.html"])
-    metadata_path = find_first(output_dir, ["*metadata*.json", "output.json", "**/*metadata*.json", "**/output.json"])
+    dataset_dir = output_root / tool / dataset
+    flat_dir = output_root / tool
+    output_dir = dataset_dir if dataset_dir.exists() else flat_dir
 
-    markdown = read_text(markdown_path)
+    markdown_paths = find_all(output_dir, ["*.md", "*.mmd", "**/*.md", "**/*.mmd"])
+    markdown_path = markdown_paths[0] if markdown_paths else None
+    html_path = find_first(output_dir, ["*.html", "**/*.html"])
+    metadata_path = find_first(
+        output_dir,
+        ["*metadata*.json", "*.jsonl", "output.json", "**/*metadata*.json", "**/*.jsonl", "**/output.json"],
+    )
+
+    markdown = "\n\n".join(read_text(path) for path in markdown_paths)
     html = read_text(html_path)
     metadata = load_json(metadata_path)
     combined_text = "\n".join(part for part in [markdown, html] if part)
 
-    image_files = list(output_dir.glob("*.png"))
-    image_files += list(output_dir.glob("*.jpg"))
-    image_files += list(output_dir.glob("*.jpeg"))
-    image_files += list(output_dir.glob("*.webp"))
+    image_files = find_all(output_dir, ["*.png", "*.jpg", "*.jpeg", "*.webp", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.webp"])
 
     notes = ""
     if not output_dir.exists():
@@ -173,10 +203,10 @@ def evaluate_tool(output_root: Path, dataset: str, tool: str) -> dict[str, str |
     return {
         "tool": tool,
         "dataset": dataset,
-        "output_dir": str(output_dir),
-        "markdown_path": str(markdown_path) if markdown_path else "",
-        "html_path": str(html_path) if html_path else "",
-        "metadata_path": str(metadata_path) if metadata_path else "",
+        "output_dir": display_path(output_dir),
+        "markdown_path": display_paths(markdown_paths),
+        "html_path": display_path(html_path),
+        "metadata_path": display_path(metadata_path),
         "total_characters": len(combined_text),
         "markdown_headings": sum(1 for line in markdown.splitlines() if line.startswith("#")),
         "markdown_tables": count_markdown_tables(markdown),
@@ -185,7 +215,7 @@ def evaluate_tool(output_root: Path, dataset: str, tool: str) -> dict[str, str |
         "image_files": len(image_files),
         "figure_caption_count": count_figure_captions(combined_text),
         "formula_marker_count": count_formula_markers(combined_text),
-        "metadata_pages": get_metadata_number(metadata, ["num_pages", "pages_count", "page_count"]),
+        "metadata_pages": get_metadata_number(metadata, ["num_pages", "pages_count", "page_count"]) or count_jsonl_rows(metadata_path),
         "metadata_chunks": get_metadata_number(metadata, ["total_chunks", "num_chunks", "chunk_count"]),
         "metadata_images": get_metadata_number(metadata, ["total_images", "num_images", "image_count"]),
         "notes": notes,

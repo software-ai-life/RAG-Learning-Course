@@ -1,0 +1,4 @@
+tool,text_accuracy_1_to_5,reading_order_1_to_5,table_quality_1_to_5,formula_quality_1_to_5,header_footer_handling_1_to_5,tiny_text_quality_1_to_5,multi_column_order_1_to_5,figure_caption_quality_1_to_5,markdown_usability_1_to_5,rag_readiness_1_to_5,notes
+chandra_output,,,,,,,,,,,
+DeepSeek-OCR_output,,,,,,,,,,,
+dots_output,,,,,,,,,,,

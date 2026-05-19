@@ -6,8 +6,10 @@ __pycache__/
 .ipynb_checkpoints/
 chapter/03_embedding/Milvus/volumes/
 chapter/OCR_comparison/DeepSeek-OCR/.git
+chapter/OCR_comparison/DeepSeek-OCR/
 chapter/OCR_comparison/DeepSeek-OCR/deepseekocr/
 chapter/OCR_comparison/DeepSeek-OCR/*.deb
 chapter/OCR_comparison/DeepSeek-OCR/*.whl
 chapter/OCR_comparison/DotsMOCR/.git
 chapter/OCR_comparison/DotsMOCR/weights/
+chapter/OCR_comparison/dots.mocr/
