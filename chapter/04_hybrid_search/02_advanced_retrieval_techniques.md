@@ -322,7 +322,192 @@ base retriever
 
 這個架構的重點不是某個特定模型，而是把 retrieval 後處理拆成可組合的元件。
 
-### 2.3 LlamaIndex 的檢索後處理
+### 2.3 程式範例：Rerank + Refine
+
+本節範例程式放在：
+
+[02_rerank_and_refine.py](./02_rerank_and_refine.py)
+
+這支程式使用前一節 Hybrid Search 的同一份範例資料：
+
+```text
+data/C4/hybrid_search/
+```
+
+流程如下：
+
+```text
+Markdown 文件
+-> RecursiveCharacterTextSplitter 切 chunks
+-> FAISS + BGE-M3 做第一階段 retrieval
+-> CrossEncoderReranker 重新排序
+-> optional Gemini refine context
+```
+
+這個範例刻意把 **rerank** 和 **refine** 分開：
+
+| 階段 | 作用 |
+| --- | --- |
+| Retrieval | 先快速取回較多候選 chunks，例如 top-12 |
+| Rerank | 用 cross-encoder 重新排序，留下 top-5 |
+| Refine | 用 Gemini 從 top-5 中抽出真正和問題相關的句子 |
+
+#### 第一階段 retrieval
+
+第一階段使用 `BAAI/bge-m3` 產生 dense embeddings，並用 FAISS 建立本地向量索引：
+
+```python
+embeddings = HuggingFaceEmbeddings(
+    model=embedding_model,
+    model_kwargs=model_kwargs,
+    encode_kwargs={"normalize_embeddings": True},
+)
+
+vectorstore = FAISS.from_documents(chunks, embeddings)
+return vectorstore.as_retriever(search_kwargs={"k": candidate_k})
+```
+
+這裡的 `candidate_k` 不是最後要給 LLM 的文件數量，而是「先多抓一些候選資料」。例如先抓 top-12，再交給 reranker 精排。
+
+重要參數如下：
+
+| 參數 | 說明 |
+| --- | --- |
+| `embedding_model` | 第一階段 retrieval 使用的 embedding model，預設是 `BAAI/bge-m3` |
+| `candidate_k` | rerank 前先召回多少 chunks |
+| `normalize_embeddings` | 對 embedding 做正規化，讓相似度計算更穩定 |
+
+#### Cross-Encoder reranker
+
+Rerank 使用現成的 LangChain 元件，不手寫排序模型：
+
+```python
+from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
+from langchain_community.cross_encoders.huggingface import HuggingFaceCrossEncoder
+
+cross_encoder = HuggingFaceCrossEncoder(
+    model_name=reranker_model,
+    model_kwargs=model_kwargs,
+)
+
+reranker = CrossEncoderReranker(
+    model=cross_encoder,
+    top_n=top_n,
+)
+
+rerank_retriever = ContextualCompressionRetriever(
+    base_retriever=base_retriever,
+    base_compressor=reranker,
+)
+```
+
+預設 reranker model 是：
+
+```python
+RERANKER_MODEL = "BAAI/bge-reranker-base"
+```
+
+`CrossEncoderReranker` 會把 query 和每個候選 chunk 放在一起評分，所以它比第一階段向量相似度更精細，但也更慢。因此通常只用在第一階段 retrieval 之後，不會直接對整個知識庫排序。
+
+重要參數如下：
+
+| 參數 | 說明 |
+| --- | --- |
+| `reranker_model` | Cross-Encoder reranker model |
+| `top_n` | rerank 後保留多少 chunks |
+| `base_retriever` | 第一階段 retriever，負責先抓候選資料 |
+| `base_compressor` | 這裡放 `CrossEncoderReranker`，負責重新排序並保留 top-n |
+
+程式也額外呼叫 cross-encoder 取得分數，方便觀察 rerank 結果：
+
+```python
+scores = cross_encoder.score(
+    [(query, document.page_content) for document in documents]
+)
+
+document.metadata["rerank_score"] = round(float(score), 6)
+```
+
+`rerank_score` 可以幫助我們判斷模型認為哪些 chunk 更能回答問題。
+
+#### Gemini refine context
+
+Rerank 後的 chunk 仍可能包含無關句子，所以程式提供可選的 Gemini refine：
+
+```python
+response = client.models.generate_content(
+    model=model,
+    contents=prompt,
+)
+```
+
+這一步不是要 Gemini 直接回答問題，而是讓它整理檢索結果，只保留和 query 直接相關的句子或 bullet points。
+
+Prompt 的任務重點是：
+
+```text
+Extract only the sentences or bullet points that are directly useful for answering the question.
+Do not answer the question. Only return the refined context.
+```
+
+這樣可以把：
+
+```text
+retrieved chunks
+```
+
+整理成更適合放進 RAG prompt 的：
+
+```text
+refined context
+```
+
+如果不想使用 Gemini，或只是想測 rerank，可以加上：
+
+```bash
+--skip-refine
+```
+
+#### 執行方式
+
+只跑 retrieval + rerank：
+
+```bash
+python chapter/04_hybrid_search/02_rerank_and_refine.py "ERR-4291" --candidate-k 12 --top-n 5 --skip-refine --device cpu
+```
+
+執行 retrieval + rerank + Gemini refine：
+
+```bash
+python chapter/04_hybrid_search/02_rerank_and_refine.py "ERR-4291" --candidate-k 12 --top-n 5 --device cpu
+```
+
+輸出會分成三段：
+
+```text
+Base retrieval results
+Reranked results
+Refined context
+```
+
+解讀時可以這樣看：
+
+| 輸出 | 觀察重點 |
+| --- | --- |
+| `Base retrieval results` | 第一階段 retrieval 是否有把可能相關資料找回來 |
+| `Reranked results` | reranker 是否把真正能回答問題的 chunk 排前面 |
+| `Refined context` | 壓縮後內容是否更適合放入 LLM prompt |
+
+這個範例的重點不是取代 Hybrid Search，而是在 retrieval 後面增加一層品質控制：
+
+```text
+先提高 recall
+再用 reranker 提高 precision
+最後用 refine 降低 context 噪音
+```
+
+### 2.4 LlamaIndex 的檢索後處理
 
 LlamaIndex 也有類似概念，通常稱為 **Node Postprocessor**。
 
