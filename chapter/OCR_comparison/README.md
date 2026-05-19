@@ -217,3 +217,34 @@ metadata 是否足夠追蹤來源
 ```
 
 所以 `evaluate_ocr_outputs.py` 只做自動統計，真正的品質判斷仍需要搭配 `manual_score.csv` 人工檢查。
+
+
+### Chandra vLLM 啟動方式
+
+```bash
+sudo docker run --name chandra-vllm \
+  --runtime nvidia --gpus device=0 \
+  -e NVIDIA_DISABLE_REQUIRE=1 \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface \
+  -p 8000:8000 \
+  --ipc=host \
+  vllm/vllm-openai:v0.17.0 \
+  --model datalab-to/chandra-ocr-2 \
+  --no-enforce-eager \
+  --max-num-seqs 64 \
+  --dtype bfloat16 \
+  --max-model-len 18000 \
+  --max_num_batched_tokens 8192 \
+  --gpu-memory-utilization .85 \
+  --enable-prefix-caching \
+  --mm-processor-kwargs '{"min_pixels": 3136, "max_pixels": 6291456}' \
+  --served-model-name chandra
+```
+
+```bash
+uv run chandra \
+  data/2025_AI_Agent_Course \
+  chapter/end_to_end_RAG/chandra_output \
+  --method vllm \
+  --max-workers 4
+```

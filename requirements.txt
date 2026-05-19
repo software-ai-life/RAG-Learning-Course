@@ -53,5 +53,6 @@ requests==2.27.1
 rank-bm25
 sentence-transformers
 FlagEmbedding>=1.3.3
+transformers>=4.56,<5
 datasets
 peft

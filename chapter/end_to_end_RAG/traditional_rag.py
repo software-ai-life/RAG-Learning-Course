@@ -20,8 +20,8 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data" / "2025_AI_Agent_Course"
-CHANDRA_OUTPUT_DIR = PROJECT_ROOT / "data" / "end_to_end_RAG" / "chandra_output"
-PROCESSED_DIR = PROJECT_ROOT / "data" / "end_to_end_RAG" / "processed"
+CHANDRA_OUTPUT_DIR = PROJECT_ROOT / "chapter" / "end_to_end_RAG" / "chandra_output"
+PROCESSED_DIR = PROJECT_ROOT / "chapter" / "end_to_end_RAG" / "processed"
 
 COLLECTION_NAME = "ai_agent_course_raw"
 MILVUS_URI = "http://localhost:19530"
